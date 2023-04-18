@@ -1,55 +1,68 @@
-#include <Wire.h>
-#include "YourGyroscopeLibrary.h"
+/* Get all possible data from MPU6050
+ * Accelerometer values are given as multiple of the gravity [1g = 9.81 m/s²]
+ * Gyro values are given in deg/s
+ * Angles are given in degrees
+ * Note that X and Y are tilt angles and not pitch/roll.
+ *
+ * License: MIT
+ */
 
-YourGyroscopeClass gyro;
+#include <Wire.h>
+#include <ESP8266WiFi.h>
+#include <MPU6050_light.h>
+#include "ArduinoOSCWiFi.h"
+
+const char* ssid = "Supreme-2.4";
+const char* pwd = "thomas03";
+const IPAddress ip(10, 1, 10, 201);
+const IPAddress gateway(10, 1, 10, 1);
+const IPAddress subnet(255, 255, 255, 0);
+
+// for ArduinoOSC
+const char* host = "10.1.10.20";
+const int publish_port = 54445;
+
+MPU6050 mpu(Wire);
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin();
-
-  if (!gyro.begin()) {
-    Serial.println("Failed to initialize gyroscope!");
-    while (1);
+  Wire.begin(4, 5);
+  
+  byte status = mpu.begin();
+  Serial.print(F("MPU6050 status: "));
+  Serial.println(status);
+  while(status!=0){ } // stop everything if could not connect to MPU6050
+  
+  Serial.println(F("Calculating offsets, do not move MPU6050"));
+  delay(1000);
+  mpu.calcOffsets(true,true); // gyro and accelero
+  Serial.println("Done!\n");
+  
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, pwd);
+  WiFi.config(ip, gateway, subnet);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
   }
-
-  // Set gyroscope settings (e.g., range, bandwidth, etc.)
+  Serial.print("WiFi connected, IP = ");
+  Serial.println(WiFi.localIP());
 }
 
 void loop() {
-  gyro.read(); // Read gyroscope data
-
-  float ax = gyro.getAccelX_mss(); // Acceleration in X-axis (m/s^2)
-  float ay = gyro.getAccelY_mss(); // Acceleration in Y-axis (m/s^2)
-  float az = gyro.getAccelZ_mss(); // Acceleration in Z-axis (m/s^2)
-
-  float gx = gyro.getGyroX_rad();  // Angular velocity in X-axis (rad/s)
-  float gy = gyro.getGyroY_rad();  // Angular velocity in Y-axis (rad/s)
-  float gz = gyro.getGyroZ_rad();  // Angular velocity in Z-axis (rad/s)
-
-  float mx = gyro.getMagX_uT();    // Magnetic field strength in X-axis (microteslas)
-  float my = gyro.getMagY_uT();    // Magnetic field strength in Y-axis (microteslas)
-  float mz = gyro.getMagZ_uT();    // Magnetic field strength in Z-axis (microteslas)
-
-  // Perform calculations to determine the position, orientation, or motion of the finger using the sensor data.
-  // You can use sensor fusion algorithms like Madgwick or Mahony to estimate the orientation (roll, pitch, yaw) of the finger.
-
-  // Print the results to the Serial Monitor
-  Serial.print("Accel (m/s^2): ");
-  Serial.print(ax); Serial.print(", ");
-  Serial.print(ay); Serial.print(", ");
-  Serial.println(az);
-
-  Serial.print("Gyro (rad/s): ");
-  Serial.print(gx); Serial.print(", ");
-  Serial.print(gy); Serial.print(", ");
-  Serial.println(gz);
-
-  Serial.print("Mag (uT): ");
-  Serial.print(mx); Serial.print(", ");
-  Serial.print(my); Serial.print(", ");
-  Serial.println(mz);
-
-  Serial.println();
-
-  delay(100);
+  mpu.update();
+  float x = mpu.getAngleX();
+  float y = mpu.getAngleY();
+  float z = mpu.getAngleZ();
+  float accX = mpu.getAccAngleX();
+  float accY = mpu.getAccAngleY();
+  float gyroX = mpu.getGyroX();
+  float gyroY = mpu.getGyroY();
+  float gyroZ = mpu.getGyroZ();
+  
+  // Send data via OSC
+  OscWiFi.update();
+  OscWiFi.publish(host, publish_port, "/data", x, y, z, accX, accY, gyroX, gyroY, gyroZ);
+  
+  delay(10);
 }
